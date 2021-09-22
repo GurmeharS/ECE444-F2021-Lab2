@@ -1,15 +1,34 @@
 import os
+import re
 from datetime import datetime
-from flask import Flask, render_template, session, redirect, url_for, flash
+
+from flask import Flask, flash, redirect, render_template, session, url_for
 from flask_bootstrap import Bootstrap
 from flask_moment import Moment
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField
-from wtforms.validators import DataRequired
+from wtforms.fields.html5 import EmailField
+from wtforms.validators import DataRequired, Email
+
+
+def is_uoft_email(email):
+    email_regex = r'^\S+@(\S*\.|)utoronto\.\S+$'
+
+    # Since Match objects are not JSON Serializable, cast to boolean before returning
+    return re.match(email_regex, email) is not None
+
+
+def handle_updated_field(form, session, field_name):
+    old_field = session.get(field_name)
+    if old_field and old_field != form.data.get(field_name):
+        flash("Looks like you've changed your {}!".format(field_name))
+    session[field_name] = form.data.get(field_name)
 
 
 class NameForm(FlaskForm):
     name = StringField("What is your name?", validators=[DataRequired()])
+    email = EmailField("What is your UofT Email address?", validators=[
+                       DataRequired(), Email()])
     submit = SubmitField('Submit')
 
 
@@ -24,12 +43,19 @@ moment = Moment(app)
 def index():
     form = NameForm()
     if form.validate_on_submit():
-        old_name = session.get('name')
-        if old_name and old_name != form.name.data:
-            flash("Looks like you've changed your name!")
-        session['name'] = form.name.data
+        handle_updated_field(form, session, 'name')
+        handle_updated_field(form, session, 'email')
+
+        session['is_uoft_email'] = is_uoft_email(form.email.data)
         return redirect(url_for('index'))
-    return render_template("index.html", form=form, name=session.get('name'))
+
+    return render_template(
+        "index.html",
+        form=form,
+        name=session.get('name'),
+        email=session.get('email'),
+        is_uoft_email=session.get('is_uoft_email')
+    )
 
 
 @app.route("/user/<name>")
